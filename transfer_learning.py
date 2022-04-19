@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from torch.optim import SGD, Adam
 import torchvision.models as models
+import torchvision
 
 from tqdm import tqdm
 import argparse
@@ -48,6 +49,8 @@ def train_epoch(model, optim, loss_fn, data_loader, params):
             if params.cuda:
                 train_batch = train_batch.cuda()        # (B,3,32,32)
                 labels_batch = labels_batch.cuda()      # (B,)
+            if hasattr(params, 'img_scale'):
+                train_batch = torchvision.transforms.functional.resize(train_batch, params.img_scale)
 
             # compute model output and loss
             output_batch = model(train_batch)           # logit without softmax
@@ -77,6 +80,9 @@ def evaluate(model, loss_fn, data_loader, params):
             if params.cuda:
                 data_batch = data_batch.cuda()          # (B,3,32,32)
                 labels_batch = labels_batch.cuda()      # (B,)
+
+            if hasattr(params, 'img_scale'):
+                data_batch = torchvision.transforms.functional.resize(data_batch, params.img_scale)
 
             # compute model output
             output_batch = model(data_batch)
@@ -178,30 +184,12 @@ if __name__ == "__main__":
     logging.info('Number of class: ' + str(num_class))
     logging.info('Create Model --- ' + params.model_name)
 
-    # ResNet 18 / 34 / 50 ****************************************
-    if params.model_name == 'resnet18':
-        model = ResNet18(num_class=num_class)
-    elif params.model_name == 'resnet34':
-        model = ResNet34(num_class=num_class)
-    elif params.model_name == 'resnet50':
-        model = ResNet50(num_class=num_class)
-    # ResNeXt *********************************************
-    elif params.model_name == 'resnext29':
-        model = CifarResNeXt(cardinality=8, depth=29, num_classes=num_class)
-
-    elif params.model_name == 'mobilenetv2':
-        model = MobileNetV2(class_num=num_class)
-
-    elif params.model_name == 'shufflenetv2':
-        model = shufflenetv2(class_num=num_class)
-        
-    elif params.teacher_model == 'efnetb2':
-        teacher_model = models.efficientnet_b2()
-
-    else:
-        model = None
-        print('Not support for model ' + str(params.model_name))
-        exit()
+    model = None
+    if params.model_name == 'efnetb2':
+        model = models.efficientnet_b2(pretrained=True)
+        model.classifier = nn.Linear(in_features=1408, out_features=num_class)
+        print(model)
+        input()
 
     if params.cuda:
         model = model.cuda()
@@ -230,5 +218,3 @@ if __name__ == "__main__":
 
     # ################################# train and evaluate #################################
     train_and_eval(model, optimizer, criterion, trainloader, devloader, params)
-
-

@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import SGD, Adam
+import torchvision.models as models
 
 
 from tqdm import tqdm
@@ -38,18 +39,38 @@ parser.add_argument('--gpu_id', default=[0], type=int, nargs='+', help='id(s) fo
 args = parser.parse_args()
 
 device_ids = args.gpu_id
-torch.cuda.set_device(device_ids[0])
+
+if torch.cuda.is_available():
+    torch.cuda.set_device(device_ids[0])
+
+
+def rand_bbox(size, lam):
+    W = size[2]
+    H = size[3]
+    cut_rat = np.sqrt(1. - lam)
+    cut_w = np.int(W * cut_rat)
+    cut_h = np.int(H * cut_rat)
+
+    # uniform
+    cx = np.random.randint(W)
+    cy = np.random.randint(H)
+
+    bbx1 = np.clip(cx - cut_w // 2, 0, W)
+    bby1 = np.clip(cy - cut_h // 2, 0, H)
+    bbx2 = np.clip(cx + cut_w // 2, 0, W)
+    bby2 = np.clip(cy + cut_h // 2, 0, H)
+    print(f'Lam {lam} cut ratio {cut_rat} bbox area {(np.abs(bbx1 - bbx2) * np.abs(bby1 - bby2))}')
+
+    return bbx1, bby1, bbx2, bby2
 
 
 def loss_fn_kd(outputs, labels, teacher_outputs, params):
     """
     Compute the knowledge-distillation (KD) loss given outputs, labels.
     """
-    alpha = params.alpha
     T = params.temperature
     KD_loss = nn.KLDivLoss(reduction='batchmean')(F.log_softmax(outputs/T, dim=1),
-                             F.softmax(teacher_outputs/T, dim=1)) * (alpha * T * T) + \
-              nn.CrossEntropyLoss()(outputs, labels) * (1. - alpha)
+                             F.softmax(teacher_outputs/T, dim=1)) * (T * T)
 
     return KD_loss
 
@@ -57,7 +78,8 @@ def loss_fn_kd(outputs, labels, teacher_outputs, params):
 # ************************** training function **************************
 def train_epoch_kd(model, t_model, optim, loss_fn_kd, data_loader, params):
     model.train()
-    t_model.eval()
+    if t_model is not None:
+        t_model.eval()
     loss_avg = RunningAverage()
 
     with tqdm(total=len(data_loader)) as t:  # Use tqdm for progress bar
@@ -66,16 +88,36 @@ def train_epoch_kd(model, t_model, optim, loss_fn_kd, data_loader, params):
                 train_batch = train_batch.cuda()  # (B,3,32,32)
                 labels_batch = labels_batch.cuda()  # (B,)
 
+            lam = 1
+            alpha = 0
+
+            if params.cutmix >= np.random.uniform(0, 1):
+                # perform cutmix
+                lam = np.random.beta(1, 1)
+                if torch.cuda.is_available():
+                    rand_index = torch.randperm(train_batch.size()[0]).cuda()
+                else:
+                    rand_index = torch.randperm(train_batch.size()[0])
+                target_a = labels_batch
+                target_b = labels_batch[rand_index]
+                bbx1, bby1, bbx2, bby2 = rand_bbox(train_batch.size(), lam)
+                train_batch[:, :, bbx1:bbx2, bby1:bby2] = train_batch[rand_index, :, bbx1:bbx2, bby1:bby2]
+                # adjust lambda to exactly match pixel ratio
+                lam = 1 - ((bbx2 - bbx1) * (bby2 - bby1) / (train_batch.size()[-1] * train_batch.size()[-2]))
+
             # compute model output and loss
+            loss = torch.zeros([])
             output_batch = model(train_batch)  # logit without SoftMax
+            if t_model is not None:
+                # get one batch output from teacher_outputs list
+                with torch.no_grad():
+                    output_teacher_batch = t_model(train_batch)   # logit without SoftMax
 
-            # get one batch output from teacher_outputs list
-            with torch.no_grad():
-                output_teacher_batch = t_model(train_batch)   # logit without SoftMax
+                # CE(output, label) + KLdiv(output, teach_out)
+                alpha = params.alpha
+                loss += loss_fn_kd(output_batch, labels_batch, output_teacher_batch, params) * alpha
 
-            # CE(output, label) + KLdiv(output, teach_out)
-            loss = loss_fn_kd(output_batch, labels_batch, output_teacher_batch, params)
-
+            loss += (1 - alpha) * (nn.CrossEntropyLoss()(output_batch, target_a) * lam + nn.CrossEntropyLoss()(output_batch, target_b) * (1. - lam))
             optim.zero_grad()
             loss.backward()
             optim.step()
@@ -254,61 +296,26 @@ if __name__ == "__main__":
         print('Not support for model ' + str(params.model_name))
         exit()
 
-    # ############################### Teacher Model ###############################
-    logging.info('Create Teacher Model --- ' + params.teacher_model)
-    # ResNet 18 / 34 / 50 ****************************************
-    if params.teacher_model == 'resnet18':
-        teacher_model = ResNet18(num_class=num_class)
-    elif params.teacher_model == 'resnet34':
-        teacher_model = ResNet34(num_class=num_class)
-    elif params.teacher_model == 'resnet50':
-        teacher_model = ResNet50(num_class=num_class)
 
-    # PreResNet(ResNet for CIFAR-10)  20/32/56/110 ***************
-    elif params.teacher_model.startswith('preresnet20'):
-        teacher_model = PreResNet(depth=20)
-    elif params.teacher_model.startswith('preresnet32'):
-        teacher_model = PreResNet(depth=32)
-    elif params.teacher_model.startswith('preresnet56'):
-        teacher_model = PreResNet(depth=56)
-    elif params.teacher_model.startswith('preresnet110'):
-        teacher_model = PreResNet(depth=110)
-
-    # DenseNet *********************************************
-    elif params.teacher_model == 'densenet121':
-        teacher_model = densenet121(num_class=num_class)
-    elif params.teacher_model == 'densenet161':
-        teacher_model = densenet161(num_class=num_class)
-    elif params.teacher_model == 'densenet169':
-        teacher_model = densenet169(num_class=num_class)
-
-    # ResNeXt *********************************************
-    elif params.teacher_model == 'resnext29':
-        teacher_model = CifarResNeXt(cardinality=8, depth=29, num_classes=num_class)
-
-    elif params.teacher_model == 'mobilenetv2':
-        teacher_model = MobileNetV2(class_num=num_class)
-
-    elif params.teacher_model == 'shufflenetv2':
-        teacher_model = shufflenetv2(class_num=num_class)
-
-    elif params.teacher_model == 'net':
-        teacher_model = Net(num_class, args)
-
-    elif params.teacher_model == 'mlp':
-        teacher_model = MLP(num_class=num_class)
-
-    else:
-        teacher_model = None
-        exit()
+    teacher_model = None
+    if hasattr(params, 'teacher_model'):
+        # ############################### Teacher Model ###############################
+        logging.info('Create Teacher Model --- ' + params.teacher_model)
+        # ResNet 18 / 34 / 50 ****************************************
+        if params.teacher_model == 'resnet18':
+            teacher_model = ResNet18(num_class=num_class)
+        elif params.teacher_model == 'efnetb2':
+            teacher_model = models.efficientnet_b2()
 
     if params.cuda:
         model = model.cuda()
-        teacher_model = teacher_model.cuda()
+        if teacher_model is not None:
+            teacher_model = teacher_model.cuda()
 
     if len(args.gpu_id) > 1:
         model = nn.DataParallel(model, device_ids=device_ids)
-        teacher_model = nn.DataParallel(teacher_model, device_ids=device_ids)
+        if teacher_model is not None:
+            teacher_model = nn.DataParallel(teacher_model, device_ids=device_ids)
 
     # checkpoint ********************************
     if args.resume:
@@ -317,16 +324,17 @@ if __name__ == "__main__":
         model.load_state_dict(checkpoint['state_dict'])
     else:
         logging.info('- Train from scratch ')
-
-    # load teacher model
-    if args.teacher_resume:
-        teacher_resume = args.teacher_resume
-        logging.info('------ Teacher Resume from system parameters!')
-    else:
-        teacher_resume = params.teacher_resume
-    logging.info('- Load Trained teacher model from {}'.format(teacher_resume))
-    checkpoint = torch.load(teacher_resume)
-    teacher_model.load_state_dict(checkpoint['state_dict'])
+    
+    if teacher_model is not None:
+        # load teacher model
+        if args.teacher_resume:
+            teacher_resume = args.teacher_resume
+            logging.info('------ Teacher Resume from system parameters!')
+        else:
+            teacher_resume = params.teacher_resume
+        logging.info('- Load Trained teacher model from {}'.format(teacher_resume))
+        checkpoint = torch.load(teacher_resume)
+        teacher_model.load_state_dict(checkpoint['state_dict'])
 
     # ############################### Optimizer ###############################
     if params.model_name == 'net' or params.model_name == 'mlp':
@@ -338,12 +346,12 @@ if __name__ == "__main__":
 
     # ************************** LOSS **************************
     criterion = loss_fn_kd
-
-    # ************************** Teacher ACC **************************
-    logging.info("- Teacher Model Evaluation ....")
-    val_metrics = evaluate(teacher_model, nn.CrossEntropyLoss(), devloader, params)  # {'acc':acc, 'loss':loss}
-    metrics_string = " ; ".join("{}: {:05.3f}".format(k, v) for k, v in val_metrics.items())
-    logging.info("- Teacher Model Eval metrics : " + metrics_string)
+    if teacher_model is not None:
+        # ************************** Teacher ACC **************************
+        logging.info("- Teacher Model Evaluation ....")
+        val_metrics = evaluate(teacher_model, nn.CrossEntropyLoss(), devloader, params)  # {'acc':acc, 'loss':loss}
+        metrics_string = " ; ".join("{}: {:05.3f}".format(k, v) for k, v in val_metrics.items())
+        logging.info("- Teacher Model Eval metrics : " + metrics_string)
 
     # ************************** train and evaluate **************************
     train_and_eval_kd(model, teacher_model, optimizer, criterion, trainloader, devloader, params)

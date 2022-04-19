@@ -1,0 +1,16 @@
+{
+    "model_name": "efnetb2",
+    "img_scale": 224,
+
+    "learning_rate": 1e-3,
+    "schedule": [10, 20],
+    "gamma": 0.2,
+    "batch_size": 128,
+    "num_epochs": 15,
+    "num_workers": 4,
+    "augmentation": 1,
+    "cuda": 1,
+
+    "dataset": "cifar100"
+}
+
