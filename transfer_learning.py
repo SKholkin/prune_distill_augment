@@ -187,9 +187,12 @@ if __name__ == "__main__":
     model = None
     if params.model_name == 'efnetb2':
         model = models.efficientnet_b2(pretrained=True)
+        for param in model.parameters():
+            param.requires_grad = False
         model.classifier = nn.Linear(in_features=1408, out_features=num_class)
-        print(model)
-        input()
+        for item in list(model.features)[6:]:
+            for param in item.parameters():
+                param.requires_grad = True
 
     if params.cuda:
         model = model.cuda()
