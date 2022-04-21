@@ -1,10 +1,13 @@
 # train a student network distilling from teacher
 
 import torch
+import nncf
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import SGD, Adam
 import torchvision.models as models
+
+from nncf import NNCFConfig, create_compressed_model, load_state
 
 
 from tqdm import tqdm
@@ -76,7 +79,7 @@ def loss_fn_kd(outputs, labels, teacher_outputs, params):
 
 
 # ************************** training function **************************
-def train_epoch_kd(model, t_model, optim, loss_fn_kd, data_loader, params):
+def train_epoch_kd(model, t_model, optim, loss_fn_kd, data_loader, params, compression_ctrl=None):
     model.train()
     if t_model is not None:
         t_model.eval()
@@ -121,6 +124,7 @@ def train_epoch_kd(model, t_model, optim, loss_fn_kd, data_loader, params):
             optim.zero_grad()
             loss.backward()
             optim.step()
+            compression_ctrl.scheduler.step()
 
             # update the average loss
             loss_avg.update(loss.item())
@@ -162,7 +166,7 @@ def evaluate(model, loss_fn, data_loader, params):
     return metrics_mean
 
 
-def train_and_eval_kd(model, t_model, optim, loss_fn, train_loader, dev_loader, params):
+def train_and_eval_kd(model, t_model, optim, loss_fn, train_loader, dev_loader, params, compression_ctrl=None):
     best_val_acc = -1
     best_epo = -1
     lr = params.learning_rate
@@ -175,7 +179,9 @@ def train_and_eval_kd(model, t_model, optim, loss_fn, train_loader, dev_loader, 
         logging.info('Learning Rate {}'.format(lr))
 
         # ********************* one full pass over the training set *********************
-        train_loss = train_epoch_kd(model, t_model, optim, loss_fn, train_loader, params)
+        train_loss = train_epoch_kd(model, t_model, optim, loss_fn, train_loader, params, compression_ctrl=compression_ctrl)
+        compression_ctrl.scheduler.epoch_step()
+
         logging.info("- Train loss : {:05.3f}".format(train_loss))
 
         # ********************* Evaluate for one epoch on validation set *********************
@@ -336,12 +342,20 @@ if __name__ == "__main__":
         checkpoint = torch.load(teacher_resume)
         teacher_model.load_state_dict(checkpoint['state_dict'])
 
+    compression_ctrl = None
+    if hasattr(params, 'compression'):
+        logging.info('\nApplying compression\n')
+        nncf_config = NNCFConfig.from_dict(params.compression)
+        print(nncf_config)
+        compression_ctrl, model = create_compressed_model(model, nncf_config)
+
+
     # ############################### Optimizer ###############################
     if params.model_name == 'net' or params.model_name == 'mlp':
         optimizer = Adam(model.parameters(), lr=params.learning_rate)
         logging.info('Optimizer: Adam')
     else:
-        optimizer = SGD(model.parameters(), lr=params.learning_rate, momentum=0.9, weight_decay=5e-4)
+        optimizer = SGD(model.parameters(), lr=params.learning_rate, momentum=0.9, weight_decay=1e-4)
         logging.info('Optimizer: SGD')
 
     # ************************** LOSS **************************
@@ -354,6 +368,5 @@ if __name__ == "__main__":
         logging.info("- Teacher Model Eval metrics : " + metrics_string)
 
     # ************************** train and evaluate **************************
-    train_and_eval_kd(model, teacher_model, optimizer, criterion, trainloader, devloader, params)
 
-
+    train_and_eval_kd(model, teacher_model, optimizer, criterion, trainloader, devloader, params, compression_ctrl=compression_ctrl)

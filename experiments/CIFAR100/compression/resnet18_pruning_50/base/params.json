@@ -1,0 +1,32 @@
+{
+    "model_name": "resnet18",
+
+    "learning_rate": 0.1,
+    "schedule": [50, 75, 90],
+    "gamma": 0.2,
+    "batch_size": 128,
+    "num_epochs": 100,
+    "num_workers": 4,
+    "augmentation": 1,
+    "cuda": 1,
+
+    "dataset": "cifar100",
+    
+    "teacher_resume": "experiments/CIFAR100/baseline/resnet18/best_model.tar",
+    "temperature": 20,
+    "alpha": 0.9,
+    "compression": [
+        {
+            "algorithm": "filter_pruning",
+            "pruning_init": 0.1,
+            "params": {
+            "schedule": "exponential",
+                "pruning_target": 0.7,
+                "pruning_steps": 25,
+                "filter_importance": "geometric_median"
+            }
+        }
+    ],
+    "cutmix": 1
+}
+
