@@ -315,21 +315,13 @@ if __name__ == "__main__":
             teacher_model = ResNet18(num_class=num_class)
         elif params.teacher_model == 'efnetb2':
             teacher_model = models.efficientnet_b2()
+            teacher_model.classifier = nn.Linear(in_features=1408, out_features=num_class)
 
-    if params.cuda:
-        model = model.cuda()
-        if teacher_model is not None:
-            teacher_model = teacher_model.cuda()
-
-    if len(args.gpu_id) > 1:
-        model = nn.DataParallel(model, device_ids=device_ids)
-        if teacher_model is not None:
-            teacher_model = nn.DataParallel(teacher_model, device_ids=device_ids)
 
     # checkpoint ********************************
-    if args.resume:
-        logging.info('- Load checkpoint model from {}'.format(args.resume))
-        checkpoint = torch.load(args.resume, map_location=lambda storage, loc: storage)
+    if params.resume:
+        logging.info('- Load checkpoint model from {}'.format(params.resume))
+        checkpoint = torch.load(params.resume, map_location=torch.device('cpu'))
         model.load_state_dict(checkpoint['state_dict'])
     else:
         logging.info('- Train from scratch ')
@@ -342,7 +334,7 @@ if __name__ == "__main__":
         else:
             teacher_resume = params.teacher_resume
         logging.info('- Load Trained teacher model from {}'.format(teacher_resume))
-        checkpoint = torch.load(teacher_resume)
+        checkpoint = torch.load(teacher_resume, map_location=torch.device('cpu'))
         teacher_model.load_state_dict(checkpoint['state_dict'])
 
     compression_ctrl = None
@@ -351,6 +343,17 @@ if __name__ == "__main__":
         nncf_config = NNCFConfig.from_dict(params.dict)
         logging.info(nncf_config)
         compression_ctrl, model = create_compressed_model(model, nncf_config)
+
+    
+    if params.cuda:
+        model = model.cuda()
+        if teacher_model is not None:
+            teacher_model = teacher_model.cuda()
+
+    if len(args.gpu_id) > 1:
+        model = nn.DataParallel(model, device_ids=device_ids)
+        if teacher_model is not None:
+            teacher_model = nn.DataParallel(teacher_model, device_ids=device_ids)
 
 
     # ############################### Optimizer ###############################

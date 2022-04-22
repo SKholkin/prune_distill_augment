@@ -1,5 +1,6 @@
 {
     "model_name": "resnet18",
+    "resume": "resnet18_@77.23.tar",
 
     "learning_rate": 0.1,
     "schedule": [50, 75, 90],
@@ -12,7 +13,6 @@
 
     "dataset": "cifar100",
     
-    "teacher_resume": "experiments/CIFAR100/baseline/resnet18/best_model.tar",
     "temperature": 20,
     "alpha": 0.9,
 
@@ -25,7 +25,7 @@
             "pruning_init": 0.1,
             "params": {
             "schedule": "exponential",
-                "pruning_target": 0.7,
+                "pruning_target": 0.5,
                 "pruning_steps": 25,
                 "filter_importance": "geometric_median"
             }
