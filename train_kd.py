@@ -7,7 +7,8 @@ import torch.nn.functional as F
 from torch.optim import SGD, Adam
 import torchvision.models as models
 
-from nncf import NNCFConfig, create_compressed_model, load_state
+from nncf import NNCFConfig
+from nncf.torch import create_compressed_model
 
 
 from tqdm import tqdm
@@ -62,7 +63,6 @@ def rand_bbox(size, lam):
     bby1 = np.clip(cy - cut_h // 2, 0, H)
     bbx2 = np.clip(cx + cut_w // 2, 0, W)
     bby2 = np.clip(cy + cut_h // 2, 0, H)
-    print(f'Lam {lam} cut ratio {cut_rat} bbox area {(np.abs(bbx1 - bbx2) * np.abs(bby1 - bby2))}')
 
     return bbx1, bby1, bbx2, bby2
 
@@ -93,6 +93,8 @@ def train_epoch_kd(model, t_model, optim, loss_fn_kd, data_loader, params, compr
 
             lam = 1
             alpha = 0
+            target_a = labels_batch
+            target_b = labels_batch
 
             if params.cutmix >= np.random.uniform(0, 1):
                 # perform cutmix
@@ -181,7 +183,6 @@ def train_and_eval_kd(model, t_model, optim, loss_fn, train_loader, dev_loader, 
         # ********************* one full pass over the training set *********************
         train_loss = train_epoch_kd(model, t_model, optim, loss_fn, train_loader, params, compression_ctrl=compression_ctrl)
         compression_ctrl.scheduler.epoch_step()
-
         logging.info("- Train loss : {:05.3f}".format(train_loss))
 
         # ********************* Evaluate for one epoch on validation set *********************
@@ -189,6 +190,8 @@ def train_and_eval_kd(model, t_model, optim, loss_fn, train_loader, dev_loader, 
         metrics_string = " ; ".join("{}: {:05.3f}".format(k, v) for k, v in val_metrics.items())
         logging.info("- Eval metrics : " + metrics_string)
 
+        statistics = compression_ctrl.statistics()
+        logging.info(statistics.to_str())
         # save model
         save_name = os.path.join(args.save_path, 'last_model.tar')
         torch.save({
@@ -345,8 +348,8 @@ if __name__ == "__main__":
     compression_ctrl = None
     if hasattr(params, 'compression'):
         logging.info('\nApplying compression\n')
-        nncf_config = NNCFConfig.from_dict(params.compression)
-        print(nncf_config)
+        nncf_config = NNCFConfig.from_dict(params.dict)
+        logging.info(nncf_config)
         compression_ctrl, model = create_compressed_model(model, nncf_config)
 
 
