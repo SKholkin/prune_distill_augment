@@ -6,6 +6,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import SGD, Adam
 import torchvision.models as models
+import torchvision
+
 
 from nncf import NNCFConfig
 from nncf.torch import create_compressed_model
@@ -115,8 +117,9 @@ def train_epoch_kd(model, t_model, optim, loss_fn_kd, data_loader, params, compr
             output_batch = model(train_batch)  # logit without SoftMax
             if t_model is not None:
                 # get one batch output from teacher_outputs list
+                teacher_batch = torchvision.transforms.functional.resize(train_batch, 224)
                 with torch.no_grad():
-                    output_teacher_batch = t_model(train_batch)   # logit without SoftMax
+                    output_teacher_batch = t_model(teacher_batch)   # logit without SoftMax
 
                 # CE(output, label) + KLdiv(output, teach_out)
                 alpha = params.alpha

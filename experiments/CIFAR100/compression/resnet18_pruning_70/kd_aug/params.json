@@ -27,10 +27,11 @@
             "pruning_init": 0.1,
             "params": {
             "schedule": "exponential",
-                "pruning_target": 0.5,
+                "pruning_target": 0.7,
                 "pruning_steps": 25,
                 "filter_importance": "geometric_median"
             }
         }
-    ]
+    ],
+    "cutmix": 1
 }

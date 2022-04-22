@@ -32,6 +32,5 @@
                 "filter_importance": "geometric_median"
             }
         }
-    ],
-    "cutmix": 0.5
+    ]
 }
