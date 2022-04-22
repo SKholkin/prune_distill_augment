@@ -98,6 +98,9 @@ def train_epoch_kd(model, t_model, optim, loss_fn_kd, data_loader, params, compr
             target_a = labels_batch
             target_b = labels_batch
 
+            if not hasattr(params, "cutmix"):
+                params.cutmix = 0
+
             if params.cutmix >= np.random.uniform(0, 1):
                 # perform cutmix
                 lam = np.random.beta(1, 1)
