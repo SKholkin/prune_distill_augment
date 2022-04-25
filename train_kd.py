@@ -86,7 +86,8 @@ def train_epoch_kd(model, t_model, optim, loss_fn_kd, data_loader, params, compr
     if t_model is not None:
         t_model.eval()
     loss_avg = RunningAverage()
-
+    device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
+    loss_fn = nn.CrossEntropyLoss().to(device)
     with tqdm(total=len(data_loader)) as t:  # Use tqdm for progress bar
         for i, (train_batch, labels_batch) in enumerate(data_loader):
             if params.cuda:
@@ -116,7 +117,7 @@ def train_epoch_kd(model, t_model, optim, loss_fn_kd, data_loader, params, compr
                 lam = 1 - ((bbx2 - bbx1) * (bby2 - bby1) / (train_batch.size()[-1] * train_batch.size()[-2]))
 
             # compute model output and loss
-            loss = torch.zeros([])
+            loss = torch.zeros([]).to(device)
             output_batch = model(train_batch)  # logit without SoftMax
             if t_model is not None:
                 # get one batch output from teacher_outputs list
@@ -127,8 +128,7 @@ def train_epoch_kd(model, t_model, optim, loss_fn_kd, data_loader, params, compr
                 # CE(output, label) + KLdiv(output, teach_out)
                 alpha = params.alpha
                 loss += loss_fn_kd(output_batch, labels_batch, output_teacher_batch, params) * alpha
-
-            loss += (1 - alpha) * (nn.CrossEntropyLoss()(output_batch, target_a) * lam + nn.CrossEntropyLoss()(output_batch, target_b) * (1. - lam))
+            loss += (1 - alpha) * (loss_fn(output_batch, target_a) * lam + loss_fn(output_batch, target_b) * (1. - lam))
             optim.zero_grad()
             loss.backward()
             optim.step()
@@ -147,6 +147,11 @@ def evaluate(model, loss_fn, data_loader, params):
     model.eval()
     # summary for current eval loop
     summ = []
+    
+    if torch.cuda.is_available():
+      loss_fn = nn.CrossEntropyLoss().cuda()
+    else:
+      loss_fn = nn.CrossEntropyLoss()
 
     with torch.no_grad():
         # compute metrics over the dataset
@@ -156,6 +161,7 @@ def evaluate(model, loss_fn, data_loader, params):
                 labels_batch = labels_batch.cuda()      # (B,)
 
             # compute model output
+            
             output_batch = model(data_batch)
             loss = loss_fn(output_batch, labels_batch)
 
@@ -382,3 +388,4 @@ if __name__ == "__main__":
     # ************************** train and evaluate **************************
 
     train_and_eval_kd(model, teacher_model, optimizer, criterion, trainloader, devloader, params, compression_ctrl=compression_ctrl)
+    
