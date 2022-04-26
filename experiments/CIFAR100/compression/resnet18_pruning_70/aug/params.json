@@ -12,6 +12,9 @@
     "cuda": 1,
 
     "dataset": "cifar100",
+    
+    "temperature": 20,
+    "alpha": 0.9,
 
     "input_info": {
         "sample_size": [1, 3, 32, 32]
@@ -28,9 +31,5 @@
             }
         }
     ],
-    "teacher_model": "efnetb2",
-    "teacher_resume": "efnetb2_@82.8.tar",
-    "temperature": 20,
-    "alpha": 0.9,
     "cutmix": 1
 }
