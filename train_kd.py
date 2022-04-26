@@ -202,8 +202,9 @@ def train_and_eval_kd(model, t_model, optim, loss_fn, train_loader, dev_loader, 
         metrics_string = " ; ".join("{}: {:05.3f}".format(k, v) for k, v in val_metrics.items())
         logging.info("- Eval metrics : " + metrics_string)
 
-        statistics = compression_ctrl.statistics()
-        logging.info(statistics.to_str())
+        if epoch % 10 == 0:
+            statistics = compression_ctrl.statistics()
+            logging.info(statistics.to_str())
         # save model
         save_name = os.path.join(args.save_path, 'last_model.tar')
         torch.save({
