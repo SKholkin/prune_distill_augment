@@ -373,7 +373,11 @@ if __name__ == "__main__":
         optimizer = Adam(model.parameters(), lr=params.learning_rate)
         logging.info('Optimizer: Adam')
     else:
-        optimizer = SGD(model.parameters(), lr=params.learning_rate, momentum=0.9, weight_decay=1e-4)
+        weight_decay = 1e-4
+        if hasattr(params, 'weight_decay'):
+            weight_decay = params.weight_decay
+        print(weight_decay)
+        optimizer = SGD(model.parameters(), lr=params.learning_rate, momentum=0.9, weight_decay=weight_decay)
         logging.info('Optimizer: SGD')
 
     # ************************** LOSS **************************
