@@ -3,8 +3,8 @@
     "resume": "resnet18_@77.23.tar",
 
     "learning_rate": 0.1,
-    "weight_decay": 1e-03,
     "schedule": [20, 40, 60, 80],
+    "weight_decay": 3e-04,
     "gamma": 0.2,
     "batch_size": 256,
     "num_epochs": 100,
@@ -28,5 +28,6 @@
                 "filter_importance": "geometric_median"
             }
         }
-    ]
+    ],
+    "cutmix": 1
 }

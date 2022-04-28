@@ -3,7 +3,7 @@
     "resume": "resnet18_@77.23.tar",
 
     "learning_rate": 0.1,
-    "weight_decay": 1e-03,
+    "weight_decay": 3e-04,
     "schedule": [20, 40, 60, 80],
     "gamma": 0.2,
     "batch_size": 256,
@@ -28,5 +28,10 @@
                 "filter_importance": "geometric_median"
             }
         }
-    ]
+    ],
+    "teacher_model": "efnetb2",
+    "teacher_resume": "efnetb2_@82.8.tar",
+    "temperature": 20,
+    "alpha": 0.5,
+    "cutmix": 1
 }
