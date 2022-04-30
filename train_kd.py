@@ -207,9 +207,15 @@ def train_and_eval_kd(model, t_model, optim, loss_fn, train_loader, dev_loader, 
             logging.info(statistics.to_str())
         # save model
         save_name = os.path.join(args.save_path, 'last_model.tar')
-        torch.save({
-            'epoch': epoch + 1, 'state_dict': model.state_dict(), 'optim_dict': optim.state_dict()},
-            save_name)
+        
+        if compression_ctrl is not None:
+            torch.save({
+                'epoch': epoch + 1, 'state_dict': model.state_dict(), 'optim_dict': optim.state_dict(), 'compression_state_dict': compression_ctrl.get_compression_state()},
+                save_name)
+        else:
+            torch.save({
+                'epoch': epoch + 1, 'state_dict': model.state_dict(), 'optim_dict': optim.state_dict()},
+                save_name)
 
         # ********************* get the best validation accuracy *********************
         val_acc = val_metrics['acc']
@@ -219,9 +225,14 @@ def train_and_eval_kd(model, t_model, optim, loss_fn, train_loader, dev_loader, 
             logging.info('- New best model ')
             # save best model
             save_name = os.path.join(args.save_path, 'best_model.tar')
-            torch.save({
-                'epoch': epoch + 1, 'state_dict': model.state_dict(), 'optim_dict': optim.state_dict()},
-                save_name)
+            if compression_ctrl is not None:
+                torch.save({
+                    'epoch': epoch + 1, 'state_dict': model.state_dict(), 'optim_dict': optim.state_dict(), 'compression_state_dict': compression_ctrl.get_compression_state()},
+                    save_name)
+            else:
+                torch.save({
+                    'epoch': epoch + 1, 'state_dict': model.state_dict(), 'optim_dict': optim.state_dict()},
+                    save_name)
 
         logging.info('- So far best epoch: {}, best acc: {:05.3f}'.format(best_epo, best_val_acc))
 
