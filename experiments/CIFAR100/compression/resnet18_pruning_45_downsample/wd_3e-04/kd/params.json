@@ -33,6 +33,5 @@
     "teacher_model": "efnetb2",
     "teacher_resume": "efnetb2_@82.8.tar",
     "temperature": 20,
-    "alpha": 0.5,
-    "cutmix": 1
+    "alpha": 0.5
 }
