@@ -86,6 +86,7 @@ def train_epoch_kd(model, t_model, optim, loss_fn_kd, data_loader, params, compr
     if t_model is not None:
         t_model.eval()
     loss_avg = RunningAverage()
+    kl_div_loss_avg = RunningAverage()
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     loss_fn = nn.CrossEntropyLoss().to(device)
     with tqdm(total=len(data_loader)) as t:  # Use tqdm for progress bar
@@ -128,7 +129,8 @@ def train_epoch_kd(model, t_model, optim, loss_fn_kd, data_loader, params, compr
                 # CE(output, label) + KLdiv(output, teach_out)
                 alpha = params.alpha
                 loss += loss_fn_kd(output_batch, labels_batch, output_teacher_batch, params) * alpha
-            loss += (1 - alpha) * (loss_fn(output_batch, target_a) * lam + loss_fn(output_batch, target_b) * (1. - lam))
+            kl_div = (1 - alpha) * (loss_fn(output_batch, target_a) * lam + loss_fn(output_batch, target_b) * (1. - lam))
+            loss += kl_div
             optim.zero_grad()
             loss.backward()
             optim.step()
@@ -136,11 +138,12 @@ def train_epoch_kd(model, t_model, optim, loss_fn_kd, data_loader, params, compr
 
             # update the average loss
             loss_avg.update(loss.item())
+            kl_div_loss_avg.update(kl_div.item())
 
             # tqdm setting
             t.set_postfix(loss='{:05.3f}'.format(loss_avg()))
             t.update()
-    return loss_avg()
+    return loss_avg(), kl_div_loss_avg()
 
 
 def evaluate(model, loss_fn, data_loader, params):
@@ -193,9 +196,10 @@ def train_and_eval_kd(model, t_model, optim, loss_fn, train_loader, dev_loader, 
         logging.info('Learning Rate {}'.format(lr))
 
         # ********************* one full pass over the training set *********************
-        train_loss = train_epoch_kd(model, t_model, optim, loss_fn, train_loader, params, compression_ctrl=compression_ctrl)
+        train_loss, train_kl_div = train_epoch_kd(model, t_model, optim, loss_fn, train_loader, params, compression_ctrl=compression_ctrl)
         compression_ctrl.scheduler.epoch_step()
         logging.info("- Train loss : {:05.3f}".format(train_loss))
+        logging.info("- Train kl div : {:05.3f}".format(train_kl_div))
 
         # ********************* Evaluate for one epoch on validation set *********************
         val_metrics = evaluate(model, nn.CrossEntropyLoss(), dev_loader, params)  # {'acc':acc, 'loss':loss}
