@@ -216,6 +216,8 @@ def train_and_eval_kd(model, t_model, optim, loss_fn, train_loader, dev_loader, 
             torch.save({
                 'epoch': epoch + 1, 'state_dict': model.state_dict(), 'optim_dict': optim.state_dict(), 'compression_state_dict': compression_ctrl.get_compression_state()},
                 save_name)
+            onnx_path = os.path.join(args.save_path, 'last_model.onnx')
+            compression_ctrl.export_model(onnx_path)
         else:
             torch.save({
                 'epoch': epoch + 1, 'state_dict': model.state_dict(), 'optim_dict': optim.state_dict()},
